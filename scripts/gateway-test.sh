@@ -129,6 +129,12 @@ if kubectl -n "comms-$ENV" get svc otp-service >/dev/null 2>&1; then
       -d "{\"purpose\":\"SIGN_IN\",\"msisdn\":\"+918$(printf '%09d' $((RANDOM * 30000 + RANDOM)))\",\"subjectRef\":\"$BURST\",\"bindingHash\":\"$BND\"}")
   done
   check "the 11th OTP send in an hour for one customer is refused" 11 "$N"
+  # A backend's own 429 passes through unchanged (not the gateway's RATE_LIMITED).
+  RS=$(curl -s -D - -o /tmp/gw-resend.json -H "Host: $HOST" -X POST "$BASE/otp/v1/challenges/$CID/resend" \
+    -H "Authorization: Bearer $WEB_TOKEN" -H "x-customer-key: $OTPCUST" -H "Content-Type: application/json" \
+    -d "{\"msisdn\":\"$MSISDN\",\"bindingHash\":\"$BND\"}" | tr -d '\r')
+  check "a backend 429 keeps its own error code" OTP_NOT_FOUND_OR_TOO_SOON \
+    "$(python3 -c 'import json; c=json.load(open("/tmp/gw-resend.json")).get("errorCode"); print("OTP_NOT_FOUND_OR_TOO_SOON" if c in ("OTP_RESEND_TOO_SOON","OTP_NOT_FOUND") else c)')"
 fi
 
 [ $FAILED = 0 ] && echo "All gateway checks passed" || echo "Some gateway checks FAILED"

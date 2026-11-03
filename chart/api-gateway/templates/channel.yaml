@@ -97,7 +97,10 @@ spec:
     http:
       requestTimeout: {{ $root.Values.timeouts.channel }}
   responseOverride:
-    - match:
+    # Only the gateway's own refusals: a backend's 429 (for example OTP_RESEND_TOO_SOON with its
+    # own Retry-After) must reach the channel unchanged.
+    - source: Local
+      match:
         statusCodes: [{ type: Value, value: 429 }]
       response:
         contentType: application/json
