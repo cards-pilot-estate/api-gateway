@@ -44,18 +44,6 @@ spec:
           {{- include "api-gateway.customerKeyMatch" $root | nindent 10 }}
       backendRefs: *otp
 ---
-apiVersion: gateway.networking.k8s.io/v1beta1
-kind: ReferenceGrant
-metadata:
-  name: api-gateway-routes
-  namespace: {{ $env.commsNamespace }}
-  labels: {{- include "api-gateway.labels" $root | nindent 4 }}
-spec:
-  from:
-    - { group: gateway.networking.k8s.io, kind: HTTPRoute, namespace: {{ $root.Release.Namespace }} }
-  to:
-    - { group: "", kind: Service, name: otp-service }
----
 apiVersion: gateway.envoyproxy.io/v1alpha1
 kind: SecurityPolicy
 metadata:

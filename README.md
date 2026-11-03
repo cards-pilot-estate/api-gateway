@@ -22,7 +22,7 @@ Design and decisions live with the platform: `card-onboarding-platform/docs/chan
 | channel | `GET /api/v1/applications/{uuid}/next-action` | same | same | same |
 | channel | `POST /api/v1/applications/{uuid}/withdrawal` | same | same | same |
 | channel | `POST /api/v1/applications/{uuid}/erasure-requests` | same | same | same |
-| comms (from WG.07) | `POST /otp/v1/challenges`, `.../{uuid}/resend`, `.../{uuid}/verification`; `GET /otp/v1/jwks.json`; `POST /sms/v1/messages` | `otp-service.comms-<env>:8080` | `comms-api-<env>` | same |
+| comms | `POST /otp/v1/challenges`, `.../{uuid}/resend`, `.../{uuid}/verification`; `GET /otp/v1/jwks.json`; `POST /sms/v1/messages` | `otp-service.comms-<env>:8080` | `comms-api-<env>` | same |
 
 Everything else answers 404, including the raw status read, `/api/v1/applicants/**`, `/api/v1/ops/**`, `/actuator/**` and the API docs. Every channel call must carry `x-customer-key` (the channel's opaque customer key, an HMAC); without it, there is no route.
 
@@ -63,5 +63,5 @@ make lint               # what CI runs
 - `gateway-redis` has no password. A NetworkPolicy admits only the rate-limit service, as a compensating control. A password needs the rate-limit service's Redis auth setting, which this chart version does not expose.
 - One proxy replica on the laptop. uat and prod run two.
 - Traefik sends `api.dev.localtest.me` here (WG.05); uat keeps its direct route until uat runs a Keycloak-era platform image.
-- The `ReferenceGrant`s that let routes reach the platform's namespaces are created here for now. They move to the platform's chart (WG.05), so the backend's owner grants access.
+- Each backend grants this gateway's routes access with its own `ReferenceGrant` (`allow-api-gateway` in `cards-<env>` and `comms-<env>`): the backend's owner decides.
 - Alerts and the dashboard are described in `docs/runbooks.md`. Wiring them into the shared observability stack is a follow-up.

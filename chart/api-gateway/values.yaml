@@ -35,9 +35,9 @@ timeouts:
   channel: 10s
   comms: 5s
 
-# The comms routes (otp-service) are added once sim-comms is deployed (WG.07).
+# The comms routes (otp-service in comms-<env>, repository sim-comms, WG.07).
 comms:
-  enabled: false
+  enabled: true
 
 # Traefik forwards the api host to the gateway (WG.05). Off until the platform drops its own route.
 perimeter:

@@ -94,5 +94,42 @@ check "a refusal carries Retry-After" 60 "$RETRY"
 check "another customer of the same channel is not affected" 200 \
   "$(code -H "Authorization: Bearer $WEB_TOKEN" -H "x-customer-key: other-$CUSTOMER" "$BASE/api/v1/applications/$APP/next-action")"
 
+# ── Route class comms (otp-service) ──────────────────────────────────────────────
+if kubectl -n "comms-$ENV" get svc otp-service >/dev/null 2>&1; then
+  MSISDN="+919$(printf '%09d' $((RANDOM * 30000 + RANDOM)))"
+  OTPCUST="otp-$CUSTOMER"
+  BND="bnd_$(openssl rand -hex 16)"
+  SEND=$(curl -s -w '\n%{http_code}' -H "Host: $HOST" -X POST "$BASE/otp/v1/challenges" -H "Authorization: Bearer $WEB_TOKEN" \
+    -H "x-customer-key: $OTPCUST" -H "Idempotency-Key: $(uuidgen)" -H "Content-Type: application/json" \
+    -d "{\"purpose\":\"SIGN_IN\",\"msisdn\":\"$MSISDN\",\"subjectRef\":\"$OTPCUST\",\"bindingHash\":\"$BND\"}")
+  check "an OTP send reaches otp-service" 202 "$(tail -1 <<<"$SEND")"
+  CID=$(head -1 <<<"$SEND" | python3 -c 'import sys,json; print(json.load(sys.stdin).get("challengeId",""))' 2>/dev/null)
+  kubectl -n "comms-$ENV" port-forward svc/otp-service 18091:8080 >/dev/null 2>&1 & PF2=$!
+  sleep 2
+  CODE=$(curl -s "http://127.0.0.1:18091/sim-admin/v1/test/last-code?msisdn=$(python3 -c "import urllib.parse;print(urllib.parse.quote('$MSISDN'))")" \
+    | python3 -c 'import sys,json; print(json.load(sys.stdin).get("code",""))' 2>/dev/null)
+  kill $PF2 2>/dev/null; wait $PF2 2>/dev/null
+  VER=$(curl -s -w '\n%{http_code}' -H "Host: $HOST" -X POST "$BASE/otp/v1/challenges/$CID/verification" \
+    -H "Authorization: Bearer $WEB_TOKEN" -H "x-customer-key: $OTPCUST" -H "Content-Type: application/json" \
+    -d "{\"code\":\"$CODE\",\"bindingHash\":\"$BND\"}")
+  check "the code from the simulated phone verifies through the gateway" 200 "$(tail -1 <<<"$VER")"
+  check "the OTP keys answer through the gateway" 200 \
+    "$(code -H "Authorization: Bearer $WEB_TOKEN" "$BASE/otp/v1/jwks.json")"
+  check "test hooks are not routed" 404 \
+    "$(code -H "Authorization: Bearer $WEB_TOKEN" -H "x-customer-key: $OTPCUST" "$BASE/sim-admin/v1/test/last-code?msisdn=x")"
+  check "a client not on the allow-list cannot send codes" 403 \
+    "$(code -X POST -H "Authorization: Bearer $OTHER_TOKEN" -H "x-customer-key: $OTPCUST" -H "Content-Type: application/json" -d '{}' "$BASE/otp/v1/challenges")"
+  # Per customer: 10 sends an hour at the gateway (otp-service's own limit is per number, so
+  # use a new number each time). The first send above counts for another customer key.
+  BURST="burst-$CUSTOMER"; N=0; LAST=202
+  while [ "$LAST" != 429 ] && [ $N -lt 15 ]; do
+    N=$((N + 1))
+    LAST=$(code -X POST "$BASE/otp/v1/challenges" -H "Authorization: Bearer $WEB_TOKEN" -H "x-customer-key: $BURST" \
+      -H "Idempotency-Key: $(uuidgen)" -H "Content-Type: application/json" \
+      -d "{\"purpose\":\"SIGN_IN\",\"msisdn\":\"+918$(printf '%09d' $((RANDOM * 30000 + RANDOM)))\",\"subjectRef\":\"$BURST\",\"bindingHash\":\"$BND\"}")
+  done
+  check "the 11th OTP send in an hour for one customer is refused" 11 "$N"
+fi
+
 [ $FAILED = 0 ] && echo "All gateway checks passed" || echo "Some gateway checks FAILED"
 exit $FAILED
