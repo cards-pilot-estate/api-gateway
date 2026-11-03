@@ -1,3 +1,9 @@
 # The laptop kind cluster cards-pilot: dev and uat share one gateway. Values here override
 # chart/api-gateway/values.yaml.
 trustedProxyCIDRs: [10.244.0.0/16]
+# dev's api host goes through the gateway (WG.05). uat keeps its direct route until it runs a
+# Keycloak-era platform image.
+perimeter:
+  ingress:
+    enabled: true
+    environments: [dev]
