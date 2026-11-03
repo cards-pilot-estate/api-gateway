@@ -1,0 +1,25 @@
+{{- if .Values.perimeter.ingress.enabled }}
+{{- range $env := .Values.environments }}
+---
+# Traefik (the perimeter) forwards the api host to the gateway. The Ingress lives next to the
+# proxy's Service, in the controller namespace.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: api-{{ $env.name }}
+  namespace: envoy-gateway-system
+  labels: {{- include "api-gateway.labels" $ | nindent 4 }}
+spec:
+  ingressClassName: {{ $.Values.perimeter.ingress.className }}
+  rules:
+    - host: {{ $env.host | quote }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ $.Values.proxy.serviceName }}
+                port: { number: 80 }
+{{- end }}
+{{- end }}

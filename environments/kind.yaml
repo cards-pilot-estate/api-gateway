@@ -1,0 +1,3 @@
+# The laptop kind cluster cards-pilot: dev and uat share one gateway. Values here override
+# chart/api-gateway/values.yaml.
+trustedProxyCIDRs: [10.244.0.0/16]

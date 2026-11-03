@@ -1,0 +1,59 @@
+# One Gateway serves every environment of the cluster, one listener each (docs/channels/README.md
+# § API gateway in card-onboarding-platform). Routes are an allow-list: anything else is 404.
+environments:
+  - name: dev
+    host: api.dev.localtest.me
+    platformNamespace: cards-dev
+    commsNamespace: comms-dev
+    audience: onboarding-api-dev
+    commsAudience: comms-api-dev
+    clients: [channel-web-dev]
+  - name: uat
+    host: api.uat.localtest.me
+    platformNamespace: cards-uat
+    commsNamespace: comms-uat
+    audience: onboarding-api-uat
+    commsAudience: comms-api-uat
+    clients: [channel-web-uat]
+
+iam:
+  issuer: http://iam.localtest.me/realms/cards
+  jwksUri: http://keycloak.iam.svc.cluster.local:8080/realms/cards/protocol/openid-connect/certs
+
+# X-Forwarded-For is believed only from the perimeter (Traefik pods in kind; cloudflared in the cloud).
+trustedProxyCIDRs: [10.244.0.0/16]
+
+limits:
+  channelClientPerMinute: 600     # the web channel: about 170 customers polling at once
+  channelCustomerPerMinute: 30    # 2.5 x a customer's worst minute (about 12 calls), GET included
+  commsClientPerMinute: 300
+  otpSendsPerCustomerPerHour: 10  # looser than otp-service's own limit (5 in 30 minutes)
+  otpVerificationsPerCustomerPerHour: 30
+  retryAfterSeconds: 60
+
+timeouts:
+  channel: 10s
+  comms: 5s
+
+# The comms routes (otp-service) are added once sim-comms is deployed (WG.07).
+comms:
+  enabled: false
+
+# Traefik forwards the api host to the gateway (WG.05). Off until the platform drops its own route.
+perimeter:
+  ingress:
+    enabled: false
+    className: traefik
+
+proxy:
+  serviceName: api-gateway
+  replicas: 1
+  resources:
+    requests: { cpu: 50m, memory: 64Mi }
+    limits: { memory: 256Mi }
+
+redis:
+  image: redis:7-alpine
+  resources:
+    requests: { cpu: 10m, memory: 16Mi }
+    limits: { memory: 64Mi }

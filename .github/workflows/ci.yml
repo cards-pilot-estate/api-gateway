@@ -1,0 +1,43 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  chart:
+    name: Chart lint and schema
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.19.0
+      - name: Lint
+        run: helm lint chart/api-gateway -f environments/kind.yaml
+      - name: Render with comms routes on and off
+        run: |
+          helm template api-gateway chart/api-gateway -n api-gateway -f environments/kind.yaml > rendered.yaml
+          helm template api-gateway chart/api-gateway -n api-gateway -f environments/kind.yaml \
+            --set comms.enabled=true --set perimeter.ingress.enabled=true > rendered-all.yaml
+      - name: Validate against the Gateway API and Envoy Gateway schemas
+        run: |
+          curl -sSL https://github.com/yannh/kubeconform/releases/download/v0.7.0/kubeconform-linux-amd64.tar.gz | tar xz
+          ./kubeconform -strict -summary \
+            -schema-location default \
+            -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json' \
+            rendered.yaml rendered-all.yaml
+      - name: The allow-list never routes forbidden paths
+        run: |
+          for forbidden in '/api/v1/applicants' '/api/v1/ops' '/actuator' '/v3/api-docs' '/sim-admin' 'PathPrefix'; do
+            if grep -v '^\s*#' rendered-all.yaml | grep -n -- "$forbidden"; then
+              echo "forbidden path or match type in the routes: $forbidden"; exit 1
+            fi
+          done
+      - name: Shell scripts
+        run: bash -n scripts/gateway-test.sh

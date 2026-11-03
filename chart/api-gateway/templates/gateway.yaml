@@ -1,0 +1,90 @@
+apiVersion: gateway.networking.k8s.io/v1
+kind: GatewayClass
+metadata:
+  name: api-gateway
+  labels: {{- include "api-gateway.labels" . | nindent 4 }}
+spec:
+  controllerName: gateway.envoyproxy.io/gatewayclass-controller
+  parametersRef:
+    group: gateway.envoyproxy.io
+    kind: EnvoyProxy
+    name: api-gateway
+    namespace: {{ .Release.Namespace }}
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: EnvoyProxy
+metadata:
+  name: api-gateway
+  labels: {{- include "api-gateway.labels" . | nindent 4 }}
+spec:
+  provider:
+    type: Kubernetes
+    kubernetes:
+      envoyDeployment:
+        replicas: {{ .Values.proxy.replicas }}
+        container:
+          resources: {{- toYaml .Values.proxy.resources | nindent 12 }}
+        pod:
+          annotations:
+            prometheus.io/scrape: "true"
+            prometheus.io/port: "19001"
+            prometheus.io/path: /stats/prometheus
+      envoyService:
+        # A fixed name, so channels reach the gateway in-cluster as api-gateway.envoy-gateway-system.
+        name: {{ .Values.proxy.serviceName }}
+        type: ClusterIP
+  telemetry:
+    accessLog:
+      settings:
+        - format:
+            type: JSON
+            # Ids only: no query string, no bodies, no tokens; the customer key never in clear.
+            json:
+              start_time: "%START_TIME%"
+              method: "%REQ(:METHOD)%"
+              path: "%REQ(X-ENVOY-ORIGINAL-PATH?:PATH)%"
+              route: "%ROUTE_NAME%"
+              status: "%RESPONSE_CODE%"
+              flags: "%RESPONSE_FLAGS%"
+              duration_ms: "%DURATION%"
+              request_id: "%REQ(X-REQUEST-ID)%"
+              correlation_id: "%REQ(X-CORRELATION-ID)%"
+              client: "%REQ(X-CHANNEL-CLIENT)%"
+              upstream: "%UPSTREAM_HOST%"
+          sinks:
+            - type: File
+              file: { path: /dev/stdout }
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: api
+  labels: {{- include "api-gateway.labels" . | nindent 4 }}
+spec:
+  gatewayClassName: api-gateway
+  listeners:
+    {{- range .Values.environments }}
+    - name: http-{{ .name }}
+      protocol: HTTP
+      port: 80
+      hostname: {{ .host | quote }}
+      allowedRoutes:
+        namespaces: { from: Same }
+    {{- end }}
+---
+# Headers a caller must never set itself are removed before any filter runs; the JWT filter then
+# sets x-channel-client from the token's azp (it appends, so removing first matters).
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: ClientTrafficPolicy
+metadata:
+  name: api
+  labels: {{- include "api-gateway.labels" . | nindent 4 }}
+spec:
+  targetRefs:
+    - { group: gateway.networking.k8s.io, kind: Gateway, name: api }
+  headers:
+    earlyRequestHeaders:
+      remove: [x-channel-client]
+  clientIPDetection:
+    xForwardedFor:
+      trustedCIDRs: {{- toYaml .Values.trustedProxyCIDRs | nindent 8 }}
