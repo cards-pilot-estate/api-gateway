@@ -62,5 +62,6 @@ make lint               # what CI runs
 
 - `gateway-redis` has no password. A NetworkPolicy admits only the rate-limit service, as a compensating control. A password needs the rate-limit service's Redis auth setting, which this chart version does not expose.
 - One proxy replica on the laptop. uat and prod run two.
+- Traefik sends `api.dev.localtest.me` here (WG.05); uat keeps its direct route until uat runs a Keycloak-era platform image.
 - The `ReferenceGrant`s that let routes reach the platform's namespaces are created here for now. They move to the platform's chart (WG.05), so the backend's owner grants access.
 - Alerts and the dashboard are described in `docs/runbooks.md`. Wiring them into the shared observability stack is a follow-up.

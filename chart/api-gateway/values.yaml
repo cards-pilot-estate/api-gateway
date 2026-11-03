@@ -44,6 +44,7 @@ perimeter:
   ingress:
     enabled: false
     className: traefik
+    environments: []   # which environments' api host Traefik sends here
 
 proxy:
   serviceName: api-gateway

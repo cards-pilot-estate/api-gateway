@@ -1,5 +1,6 @@
 {{- if .Values.perimeter.ingress.enabled }}
 {{- range $env := .Values.environments }}
+{{- if has $env.name $.Values.perimeter.ingress.environments }}
 ---
 # Traefik (the perimeter) forwards the api host to the gateway. The Ingress lives next to the
 # proxy's Service, in the controller namespace.
@@ -21,5 +22,6 @@ spec:
               service:
                 name: {{ $.Values.proxy.serviceName }}
                 port: { number: 80 }
+{{- end }}
 {{- end }}
 {{- end }}
