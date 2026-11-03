@@ -1,0 +1,68 @@
+# The gateway team's own rate-limit store. No persistence: losing it resets the windows, which only
+# makes the limits more generous for at most one window. No password in this slice: a
+# NetworkPolicy admits only Envoy Gateway's rate-limit service (recorded in the README).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gateway-redis
+  labels: {{- include "api-gateway.labels" . | nindent 4 }}
+    app.kubernetes.io/name: gateway-redis
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app.kubernetes.io/name: gateway-redis }
+  template:
+    metadata:
+      labels: { app.kubernetes.io/name: gateway-redis, app.kubernetes.io/part-of: api-gateway }
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 999
+        seccompProfile: { type: RuntimeDefault }
+      containers:
+        - name: redis
+          image: {{ .Values.redis.image }}
+          args: ["--save", "", "--appendonly", "no", "--maxmemory", "48mb", "--maxmemory-policy", "allkeys-lru"]
+          ports:
+            - { name: redis, containerPort: 6379 }
+          resources: {{- toYaml .Values.redis.resources | nindent 12 }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: [ALL] }
+          readinessProbe:
+            tcpSocket: { port: redis }
+            periodSeconds: 10
+          volumeMounts:
+            - { name: data, mountPath: /data }
+      volumes:
+        - name: data
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: gateway-redis
+  labels: {{- include "api-gateway.labels" . | nindent 4 }}
+spec:
+  selector: { app.kubernetes.io/name: gateway-redis }
+  ports:
+    - { name: redis, port: 6379, targetPort: redis }
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: gateway-redis
+  labels: {{- include "api-gateway.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels: { app.kubernetes.io/name: gateway-redis }
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels: { kubernetes.io/metadata.name: envoy-gateway-system }
+          podSelector:
+            matchLabels: { app.kubernetes.io/name: envoy-ratelimit }
+      ports:
+        - { port: 6379 }

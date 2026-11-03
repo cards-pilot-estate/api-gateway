@@ -1,0 +1,28 @@
+# Envoy Gateway controller (chart oci://docker.io/envoyproxy/gateway-helm, v1.9.3), ADR-0019 in
+# card-onboarding-platform. Defaults reserve 256Mi and allow 1Gi; the laptop cluster cannot spare that.
+deployment:
+  envoyGateway:
+    resources:
+      requests: { cpu: 50m, memory: 64Mi }
+      limits: { memory: 256Mi }
+config:
+  envoyGateway:
+    gateway:
+      controllerName: gateway.envoyproxy.io/gatewayclass-controller
+    provider:
+      type: Kubernetes
+      kubernetes:
+        rateLimitDeployment:
+          container:
+            resources:
+              requests: { cpu: 20m, memory: 32Mi }
+              limits: { memory: 128Mi }
+    logging:
+      level:
+        default: info
+    # Global rate limits (per client, per customer) live in the gateway team's own Redis.
+    rateLimit:
+      backend:
+        type: Redis
+        redis:
+          url: gateway-redis.api-gateway.svc.cluster.local:6379

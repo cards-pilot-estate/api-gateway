@@ -1,0 +1,130 @@
+{{- if .Values.comms.enabled }}
+{{- $root := . -}}
+{{- $uuid := include "api-gateway.uuid" . -}}
+{{- range $env := .Values.environments }}
+---
+# Route class "comms": otp-service (sim-comms). Its /sim-admin/** test hooks are never routed.
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: comms-{{ $env.name }}
+  labels: {{- include "api-gateway.labels" $root | nindent 4 }}
+    route-class: comms
+    env: {{ $env.name }}
+spec:
+  parentRefs:
+    - { name: api, sectionName: http-{{ $env.name }} }
+  hostnames: [{{ $env.host | quote }}]
+  rules:
+    - name: otp-send
+      matches:
+        - method: POST
+          path: { type: Exact, value: /otp/v1/challenges }
+          {{- include "api-gateway.customerKeyMatch" $root | nindent 10 }}
+        - method: POST
+          path: { type: RegularExpression, value: "^/otp/v1/challenges/{{ $uuid }}/resend$" }
+          {{- include "api-gateway.customerKeyMatch" $root | nindent 10 }}
+      backendRefs: &otp
+        - { name: otp-service, namespace: {{ $env.commsNamespace }}, port: 8080 }
+    - name: otp-verify
+      matches:
+        - method: POST
+          path: { type: RegularExpression, value: "^/otp/v1/challenges/{{ $uuid }}/verification$" }
+          {{- include "api-gateway.customerKeyMatch" $root | nindent 10 }}
+      backendRefs: *otp
+    - name: jwks
+      matches:
+        - method: GET
+          path: { type: Exact, value: /otp/v1/jwks.json }
+      backendRefs: *otp
+    - name: sms
+      matches:
+        - method: POST
+          path: { type: Exact, value: /sms/v1/messages }
+          {{- include "api-gateway.customerKeyMatch" $root | nindent 10 }}
+      backendRefs: *otp
+---
+apiVersion: gateway.networking.k8s.io/v1beta1
+kind: ReferenceGrant
+metadata:
+  name: api-gateway-routes
+  namespace: {{ $env.commsNamespace }}
+  labels: {{- include "api-gateway.labels" $root | nindent 4 }}
+spec:
+  from:
+    - { group: gateway.networking.k8s.io, kind: HTTPRoute, namespace: {{ $root.Release.Namespace }} }
+  to:
+    - { group: "", kind: Service, name: otp-service }
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: SecurityPolicy
+metadata:
+  name: comms-{{ $env.name }}
+  labels: {{- include "api-gateway.labels" $root | nindent 4 }}
+spec:
+  targetRefs:
+    - { group: gateway.networking.k8s.io, kind: HTTPRoute, name: comms-{{ $env.name }} }
+  jwt:
+    providers:
+      - name: cards
+        issuer: {{ $root.Values.iam.issuer | quote }}
+        audiences: [{{ $env.commsAudience | quote }}]
+        remoteJWKS:
+          uri: {{ $root.Values.iam.jwksUri | quote }}
+          cacheDuration: 60s
+        claimToHeaders:
+          - { claim: azp, header: x-channel-client }
+  authorization:
+    defaultAction: Deny
+    rules:
+      - name: channel-clients
+        action: Allow
+        principal:
+          jwt:
+            provider: cards
+            claims:
+              - name: azp
+                values: {{- toYaml $env.clients | nindent 18 }}
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: BackendTrafficPolicy
+metadata:
+  name: comms-{{ $env.name }}
+  labels: {{- include "api-gateway.labels" $root | nindent 4 }}
+spec:
+  targetRefs:
+    - { group: gateway.networking.k8s.io, kind: HTTPRoute, name: comms-{{ $env.name }} }
+  rateLimit:
+    type: Global
+    global:
+      rules:
+        - clientSelectors:
+            - headers:
+                - { type: Distinct, name: x-channel-client }
+          limit: { requests: {{ $root.Values.limits.commsClientPerMinute }}, unit: Minute }
+        - clientSelectors:
+            - path: { type: RegularExpression, value: "^/otp/v1/challenges(/{{ $uuid }}/resend)?$" }
+              headers:
+                - { type: Distinct, name: x-customer-key }
+          limit: { requests: {{ $root.Values.limits.otpSendsPerCustomerPerHour }}, unit: Hour }
+        - clientSelectors:
+            - path: { type: RegularExpression, value: "^/otp/v1/challenges/{{ $uuid }}/verification$" }
+              headers:
+                - { type: Distinct, name: x-customer-key }
+          limit: { requests: {{ $root.Values.limits.otpVerificationsPerCustomerPerHour }}, unit: Hour }
+  timeout:
+    http:
+      requestTimeout: {{ $root.Values.timeouts.comms }}
+  responseOverride:
+    - match:
+        statusCodes: [{ type: Value, value: 429 }]
+      response:
+        contentType: application/json
+        body:
+          type: Inline
+          inline: '{"errorCode":"RATE_LIMITED","message":"Too many requests"}'
+        header:
+          set:
+            - { name: Retry-After, value: {{ $root.Values.limits.retryAfterSeconds | quote }} }
+{{- end }}
+{{- end }}
