@@ -42,20 +42,6 @@ spec:
           {{- include "api-gateway.customerKeyMatch" $root | nindent 10 }}
       backendRefs: *platform
 ---
-apiVersion: gateway.networking.k8s.io/v1beta1
-kind: ReferenceGrant
-metadata:
-  # The platform namespace lets this gateway's routes send to its service. Moves to the platform
-  # chart in WG.05, so the backend's owner grants access.
-  name: api-gateway-routes
-  namespace: {{ $env.platformNamespace }}
-  labels: {{- include "api-gateway.labels" $root | nindent 4 }}
-spec:
-  from:
-    - { group: gateway.networking.k8s.io, kind: HTTPRoute, namespace: {{ $root.Release.Namespace }} }
-  to:
-    - { group: "", kind: Service, name: onboarding-service }
----
 apiVersion: gateway.envoyproxy.io/v1alpha1
 kind: SecurityPolicy
 metadata:
