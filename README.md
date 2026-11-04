@@ -21,6 +21,7 @@ Design and decisions live with the platform: `card-onboarding-platform/docs/chan
 | channel | `POST /api/v1/applications` | `onboarding-service.cards-<env>:8080` | `onboarding-api-<env>` | `channel-web-<env>` |
 | channel | `GET /api/v1/applications/{uuid}/next-action` | same | same | same |
 | channel | `POST /api/v1/applications/{uuid}/withdrawal` | same | same | same |
+| channel | `POST /api/v1/applications/{uuid}/offer-acceptance` (the customer's answer to their offer, W10.04) | same | same | same |
 | channel | `POST /api/v1/applications/{uuid}/erasure-requests` | same | same | same |
 | comms | `POST /otp/v1/challenges`, `.../{uuid}/resend`, `.../{uuid}/verification`; `GET /otp/v1/jwks.json`; `POST /sms/v1/messages` | `otp-service.comms-<env>:8080` | `comms-api-<env>` | same |
 

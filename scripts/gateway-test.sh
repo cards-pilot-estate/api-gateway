@@ -77,6 +77,12 @@ check "the forged x-channel-client is replaced by the token's azp" "channel-web-
 
 check "the customer view answers through the gateway" 200 \
   "$(code -H "Authorization: Bearer $WEB_TOKEN" -H "x-customer-key: $CUSTOMER" "$BASE/api/v1/applications/$APP/next-action")"
+check "the offer answer is routed to the platform (an empty answer fails validation there)" 400 \
+  "$(code -X POST -H "Authorization: Bearer $WEB_TOKEN" -H "x-customer-key: $CUSTOMER" -H "Idempotency-Key: gw-$(uuidgen)" \
+     -H "Content-Type: application/json" -d '{}' "$BASE/api/v1/applications/$APP/offer-acceptance")"
+check "the offer answer without a customer key is not routed" 404 \
+  "$(code -X POST -H "Authorization: Bearer $WEB_TOKEN" -H "Content-Type: application/json" -d '{}' \
+     "$BASE/api/v1/applications/$APP/offer-acceptance")"
 
 # Per-customer limit: 30 a minute, GET included. Windows are fixed calendar minutes, so start a
 # fresh customer early in a minute and count the calls until the first refusal.

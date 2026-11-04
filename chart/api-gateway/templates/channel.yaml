@@ -35,6 +35,12 @@ spec:
           path: { type: RegularExpression, value: "^/api/v1/applications/{{ $uuid }}/withdrawal$" }
           {{- include "api-gateway.customerKeyMatch" $root | nindent 10 }}
       backendRefs: *platform
+    - name: offer-acceptance
+      matches:
+        - method: POST
+          path: { type: RegularExpression, value: "^/api/v1/applications/{{ $uuid }}/offer-acceptance$" }
+          {{- include "api-gateway.customerKeyMatch" $root | nindent 10 }}
+      backendRefs: *platform
     - name: erasure-request
       matches:
         - method: POST
